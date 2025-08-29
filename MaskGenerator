@@ -1,0 +1,186 @@
+import cv2
+import numpy as np
+import customtkinter as ctk
+from tkinter import filedialog
+from PIL import Image, ImageTk
+import json
+import os
+
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("dark-blue")
+
+class MaskCreatorApp(ctk.CTk):
+   def __init__(self):
+       super().__init__()
+       self.title("Mask Generator")
+       self.geometry("1200x800")
+
+       self.image_label = ctk.CTkLabel(self, text="")
+       self.image_label.pack()
+
+       self.button_frame = ctk.CTkFrame(self)
+       self.button_frame.pack(pady=10)
+
+       self.load_btn = ctk.CTkButton(self.button_frame, text="📂 Cargar Imagen", command=self.load_image)
+       self.load_btn.pack(side="left", padx=10)
+
+       self.save_btn = ctk.CTkButton(self.button_frame, text="💾 Guardar Máscara", command=self.save_mask)
+       self.save_btn.pack(side="left", padx=10)
+
+       self.clear_btn = ctk.CTkButton(self.button_frame, text="🧹 Limpiar Zonas", command=self.clear_rectangles)
+       self.clear_btn.pack(side="right", padx=10)
+
+       self.template_btn = ctk.CTkButton(self.button_frame, text="Make 'ref' last ROI", command=self.create_template)
+       self.template_btn.pack(side="right", padx=10)
+
+       self.quit_btn = ctk.CTkButton(self, text="Salir", command=self.destroy)
+       self.quit_btn.pack(pady=10)
+
+       self.canvas = ctk.CTkCanvas(self, width=1200, height=1000, bg="black")
+       self.canvas.pack()
+
+       self.original_image = None
+       self.tk_image = None
+       self.rectangles = []
+       self.start_x = self.start_y = 0
+       self.current_rect = None
+       self.template =None
+
+       self.canvas.bind("<ButtonPress-1>", self.start_draw)
+       self.canvas.bind("<B1-Motion>", self.draw_rect)
+       self.canvas.bind("<ButtonRelease-1>", self.end_draw)
+
+   def load_image(self):
+       self.template_btn.configure(fg_color='blue')
+       file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.png *.bmp")])
+       partesname_config= file_path.split("/")
+       self.image_name = partesname_config[-1].strip()
+       remove_extension = self.image_name.split(".")
+       self.image_number = remove_extension[-2].strip()
+    
+       if file_path:
+           self.original_image = cv2.imread(file_path)
+           resized = cv2.resize(self.original_image, (1200, 1000))
+           self.tk_image = ImageTk.PhotoImage(image=Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)))
+           self.canvas.create_image(0, 0, anchor="nw", image=self.tk_image)
+           self.rectangles.clear()
+           self.i=0
+
+   def start_draw(self, event):
+       self.start_x = event.x
+       self.start_y = event.y
+       self.current_rect = self.canvas.create_rectangle(self.start_x, self.start_y, self.start_x, self.start_y, outline="blue")
+
+   def draw_rect(self, event):
+       self.canvas.coords(self.current_rect, self.start_x, self.start_y, event.x, event.y)
+   
+   def end_draw(self, event):
+       end_x = event.x
+       end_y = event.y
+       # Pedir nombre del ROI
+       self.nombre = ctk.CTkInputDialog(text="Nombre del ROI", title="Asignar nombre").get_input()
+       if not self.nombre:
+           self.nombre = f"ROI_{len(self.rectangles) + 1}"
+       self.rectangles.append({
+           "nombre": self.nombre,
+           "start": (self.start_x, self.start_y),
+           "end": (end_x, end_y)
+       })
+
+
+   def clear_rectangles(self):
+        self.template_btn.configure(fg_color='blue')
+        #self.rectangles = []
+        self.rectangles.clear()
+        self.display_image = self.original_image.copy()
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_image)
+        #self.show_image()
+        self.i=0
+
+   def create_template(self):
+        self.template_btn.configure(fg_color='green')
+        if self.original_image is None or not self.rectangles:
+           print("No hay imagen o zonas seleccionadas")
+           return
+        h, w = self.original_image.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        scale_x = w / 1200
+        scale_y = h / 1000
+        zonas = []
+        for r in self.rectangles:
+           x1, y1 = int(r["start"][0] * scale_x), int(r["start"][1] * scale_y)
+           x2, y2 = int(r["end"][0] * scale_x), int(r["end"][1] * scale_y)
+           cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+
+           self.template={
+                   "path": "ref"+self.image_number+".bmp",
+                   "x1": min(x1, x2),
+                   "y1": min(y1, y2),
+                   "x2": max(x1, x2),
+                   "y2": max(y1, y2)
+
+               }
+           #return self.template
+    
+       
+
+   def save_mask(self):
+       self.template_btn.configure(fg_color='blue')
+       if self.original_image is None or not self.rectangles:
+           print("No hay imagen o zonas seleccionadas")
+           return
+       h, w = self.original_image.shape[:2]
+       mask = np.zeros((h, w), dtype=np.uint8)
+       scale_x = w / 1200
+       scale_y = h / 1000
+       zonas = []
+       for r in self.rectangles:
+           x1, y1 = int(r["start"][0] * scale_x), int(r["start"][1] * scale_y)
+           x2, y2 = int(r["end"][0] * scale_x), int(r["end"][1] * scale_y)
+           cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+
+           #if self.nombre == "ref":
+               #continue
+
+           zonas.append({
+            "nombre": r["nombre"],
+            "x1": min(x1, x2),
+            "y1": min(y1, y2),
+            "x2": max(x1, x2),
+            "y2": max(y1, y2)
+        })
+           #template = None
+
+       save_path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG Files", "*.png")])
+       if save_path:
+           cv2.imwrite(save_path, mask)
+           print(f"Máscara guardada en: {save_path}")
+           # Guardar JSON
+           json_path = os.path.splitext(save_path)[0] + ".json"
+           config_json = {
+               "enabled" : True,
+               "zonas": zonas,
+               "template": self.template
+           }
+           if self.template is not None:
+               
+                ref = self.original_image[self.template['y1']:self.template['y2'],self.template['x1']:self.template['x2'] ]
+                templ= os.path.dirname(save_path) 
+                templ_img = "ref"+self.image_number+".bmp" 
+                templ_path = os.path.join(templ,templ_img).replace('\\', '/') 
+                #print(f"el path es: {templ_path}")
+                cv2.imwrite(templ_path, ref)
+                with open(json_path, 'w') as json_file:
+                    json.dump(config_json, json_file, indent=4)
+                print(f"Coordenadas guardadas en: {json_path}")
+
+           else:
+                with open(json_path, 'w') as json_file:
+                    json.dump(config_json, json_file, indent=4)
+                print(f"Coordenadas guardadas en: {json_path}")
+           
+if __name__ == "__main__":
+   ctk.set_appearance_mode("dark")
+   ctk.set_default_color_theme("blue")
+   app = MaskCreatorApp()
+   app.mainloop()
