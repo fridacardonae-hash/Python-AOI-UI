@@ -1,4 +1,4 @@
-# Python-AOI-UI
+# Python-AOI-OpenCV
 In this repository you will find this solution I developed to replace an AOI, is very generic so you could modify the method of inspection and where you want to inspect what, initially was build to inspect glue but you could use it for your own purposes.
 
 This can also be used to sort certain images located in a folder or subfolders of a location.
